@@ -3,12 +3,12 @@ package com.example.vivek.app.controller;
 
 import com.example.vivek.app.dto.TaskRequestDto;
 import com.example.vivek.app.service.TaskProducerService;
+import com.example.vivek.app.service.TaskService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
 
 @RestController
 @RequestMapping("/task")
@@ -16,6 +16,9 @@ public class TaskController {
 
     @Autowired
     private TaskProducerService taskProducerService;
+
+    @Autowired
+    private TaskService taskService;
 
     @PostMapping("/create")
     public ResponseEntity<?> createTask(@RequestBody TaskRequestDto taskRequestDto){
@@ -28,12 +31,32 @@ public class TaskController {
         }
     }
 
-//    @PostMapping("/send")
-//    public ResponseEntity<String> sendNormal() {
-//        taskProducerService.sendNormal("came from normal message without delay");
-//        taskProducerService.sendWithDelay("came from delayed message", 60_000);
-//        return ResponseEntity.ok(" message sent");
-//    }
+    @GetMapping("/status/{userId}")
+    public ResponseEntity<?> getTaskStatus(@PathVariable String userId){
+       String status= taskService.getTaskStatus(userId);
+       return ResponseEntity.status(200).body(Map.of("taskStatus",status));
+    }
 
+    @GetMapping("/progress/{userId}")
+    public ResponseEntity<?> getProgress(@PathVariable String userId){
+        Map<String,Object> data= taskService.getTaskProgress(userId);
+        return ResponseEntity.status(200).body(data);
+    }
+
+    @PostMapping("/cancel")
+    public ResponseEntity<?> cancelOnGoingTask(@RequestBody Map<String,String> data){
+       if (taskService.cancelUserTask(data.get("userId"))){
+           return ResponseEntity.status(200).build();
+       }
+       return ResponseEntity.status(400).build();
+    }
+
+
+    @PostMapping("/resume")
+    public ResponseEntity<?> resumeTask(@RequestBody  Map<String,String> data ){
+
+        taskService.resumeTask( data.get("userId"));
+
+    }
 
 }

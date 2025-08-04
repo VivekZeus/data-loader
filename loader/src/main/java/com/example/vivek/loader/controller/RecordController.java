@@ -52,9 +52,9 @@ public class RecordController {
         if(size>100){
             return ResponseEntity.status(400).body(Map.of("message","Page size more than 100"));
         }
-        if(!RateLimitter.shouldAllowRequest(apiKey)){
-            return ResponseEntity.status(429).body(Map.of("message","Too many requests sent"));
-        }
+//        if(!RateLimitter.shouldAllowRequest(apiKey)){
+//            return ResponseEntity.status(429).body(Map.of("message","Too many requests sent"));
+//        }
 
         Pageable pageable = PageRequest.of(page, size);
         Page<Record> resultPage = recordRepository.findAll(pageable);

@@ -12,6 +12,6 @@ public class TaskDto {
     private String taskId;
     private String userId;
     private long requestedRecords;
-    private long processedRecords;
+//    private long processedRecords;
 
 }

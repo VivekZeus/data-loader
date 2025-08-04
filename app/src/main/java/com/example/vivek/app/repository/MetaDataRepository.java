@@ -11,4 +11,6 @@ import java.util.Optional;
 public interface MetaDataRepository extends JpaRepository<DataLoaderMetaData,String> {
 
     Optional<DataLoaderMetaData> findByTaskId(String taskId);
+    // Fetch the latest task for the given user
+    Optional<DataLoaderMetaData> findTopByUserIdOrderByStartedAtDesc(String userId);
 }

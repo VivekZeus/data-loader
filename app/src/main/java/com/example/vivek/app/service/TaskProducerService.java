@@ -6,13 +6,10 @@ import com.example.vivek.app.entity.DataLoaderMetaData;
 import com.example.vivek.app.enums.TaskStatus;
 import com.example.vivek.app.repository.MetaDataRepository;
 import com.example.vivek.app.util.CacheUtility;
-import org.springframework.amqp.core.Message;
-import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 @Service
@@ -26,23 +23,33 @@ public class TaskProducerService {
 
     public static final String TASK_QUEUE = "my-queue";
 
+    private boolean canCreateNewTask(TaskStatus status){
+        return (status!=TaskStatus.IN_PROGRESS && status!=TaskStatus.COLLECTED && status!=TaskStatus.WAITING);
+    }
+
     public boolean createAndSendTask(String userId, long records) {
+
+        DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
+        assert metaData != null;
+        TaskStatus status=metaData.getStatus();
+        if(!canCreateNewTask(status))return false;
+
 
         try {
             String taskId = UUID.randomUUID().toString();
-            TaskDto taskDto = new TaskDto(taskId, userId, records,0);
+            TaskDto taskDto = new TaskDto(taskId, userId, records);
 
 
-            DataLoaderMetaData metaData=new DataLoaderMetaData();
+            metaData=new DataLoaderMetaData();
             metaData.setTaskId(taskId);
-            metaData.setStatus(TaskStatus.IN_PROGRESS);
+            metaData.setStatus(TaskStatus.RECEIVED);
             metaData.setUserId(userId);
             metaData.setRequestedRecords(records);
             metaDataRepository.save(metaData);
 
 
             // create entry in cache;
-            CacheUtility.setTaskStatus(taskId,TaskStatus.IN_PROGRESS);
+            CacheUtility.setTaskStatus(taskId,TaskStatus.RECEIVED);
 
             rabbitTemplate.convertAndSend("my-delayed-exchange", "my-routing-key", taskDto);
             return true;
@@ -52,18 +59,7 @@ public class TaskProducerService {
     }
 
 
-//    public void sendNormal(String message) {
-//        rabbitTemplate.convertAndSend("my-delayed-exchange", "my-routing-key", message);
-//        System.out.println("Sent normal message: " + message);
-//    }
-//
-//    public void sendWithDelay(String message, int delayMillis) {
-//        MessageProperties props = new MessageProperties();
-//        props.setHeader("x-delay", delayMillis);
-//        Message msg = new Message(message.getBytes(StandardCharsets.UTF_8), props);
-//        rabbitTemplate.send("my-delayed-exchange", "my-routing-key", msg);
-//        System.out.println("Sent delayed message: " + message + " (" + delayMillis + " ms)");
-//    }
+
 
 
 }

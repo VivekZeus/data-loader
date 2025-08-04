@@ -11,8 +11,6 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Data
-@AllArgsConstructor
-@NoArgsConstructor
 public class DataMain {
 
     @Id
@@ -24,4 +22,14 @@ public class DataMain {
     private int age;
     private String userId;
 
+    public DataMain(String name, long rollNo, int age, String userId) {
+        this.name = name;
+        this.rollNo = rollNo;
+        this.age = age;
+        this.userId = userId;
+    }
+
+    public DataMain(){
+
+    }
 }

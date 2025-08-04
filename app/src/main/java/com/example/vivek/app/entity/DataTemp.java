@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Data
+
 public class DataTemp {
 
 
@@ -33,6 +34,10 @@ public class DataTemp {
         this.userId = userId;
         this.recordNumber = recordNumber;
         this.pageNumber = pageNumber;
+    }
+
+    public DataTemp(){
+
     }
 
 }
