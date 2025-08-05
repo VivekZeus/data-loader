@@ -1,6 +1,7 @@
 package com.example.vivek.app.config;
 
 
+import com.example.vivek.app.util.CacheUtility;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.CustomExchange;
@@ -34,8 +35,8 @@ public class RabbitMqConfig {
             SimpleRabbitListenerContainerFactory factory = new SimpleRabbitListenerContainerFactory();
             factory.setConnectionFactory(connectionFactory);
             factory.setMessageConverter(messageConverter);
-            factory.setConcurrentConsumers(4);     // Minimum
-            factory.setMaxConcurrentConsumers(5);  // Maximum
+//            factory.setConcurrentConsumers(4);     // Minimum
+//            factory.setMaxConcurrentConsumers(5);  // Maximum
             factory.setAdviceChain(RetryInterceptorBuilder.stateless()
                     .maxAttempts(3)
                     .backOffOptions(1000, 2.0, 10000)
@@ -48,6 +49,21 @@ public class RabbitMqConfig {
     public Queue myQueue() {
         return new Queue("my-queue");
     }
+
+    @Bean
+    public Queue myHighPriorityQueue() {
+        return new Queue("my-high-priority-queue");
+    }
+
+    @Bean
+    public Binding highPriorityBinding() {
+        return BindingBuilder
+                .bind(myHighPriorityQueue())
+                .to(delayedExchange())
+                .with("high-routing-key")
+                .noargs();
+    }
+
 
     @Bean
     public CustomExchange delayedExchange() {
@@ -72,6 +88,7 @@ public class RabbitMqConfig {
 
     @Bean
     public ApplicationRunner runner(RabbitAdmin rabbitAdmin) {
+        CacheUtility.setTaskDivision(false);
         return args -> rabbitAdmin.initialize();
     }
 

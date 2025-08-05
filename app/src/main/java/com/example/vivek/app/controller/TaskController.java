@@ -2,7 +2,6 @@ package com.example.vivek.app.controller;
 
 
 import com.example.vivek.app.dto.TaskRequestDto;
-import com.example.vivek.app.service.TaskProducerService;
 import com.example.vivek.app.service.TaskService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -14,15 +13,13 @@ import java.util.Map;
 @RequestMapping("/task")
 public class TaskController {
 
-    @Autowired
-    private TaskProducerService taskProducerService;
 
     @Autowired
     private TaskService taskService;
 
     @PostMapping("/create")
     public ResponseEntity<?> createTask(@RequestBody TaskRequestDto taskRequestDto){
-        boolean accepted=taskProducerService.createAndSendTask(taskRequestDto.getUserId(),taskRequestDto.getRecordsRequested());
+        boolean accepted=taskService.createAndSendTask(taskRequestDto.getUserId(),taskRequestDto.getRecordsRequested());
         if (accepted) {
             return ResponseEntity.status(201).build();
         }
@@ -51,11 +48,13 @@ public class TaskController {
        return ResponseEntity.status(400).build();
     }
 
-
     @PostMapping("/resume")
     public ResponseEntity<?> resumeTask(@RequestBody  Map<String,String> data ){
 
-        taskService.resumeTask( data.get("userId"));
+       if ( taskService.resumeTask( data.get("userId"))){
+           return ResponseEntity.status(200).build();
+       }
+       return ResponseEntity.badRequest().build();
 
     }
 

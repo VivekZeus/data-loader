@@ -1,43 +1,34 @@
 package com.example.vivek.app.service;
 
+import com.example.vivek.app.dto.TaskDto;
 import com.example.vivek.app.entity.DataLoaderMetaData;
 import com.example.vivek.app.enums.TaskStatus;
 import com.example.vivek.app.repository.MetaDataRepository;
 import com.example.vivek.app.util.CacheUtility;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.config.Task;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class TaskService {
 
-
-
     @Autowired
     private MetaDataRepository metaDataRepository;
 
-    public String getTaskStatus(String userId){
-        DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
-        assert metaData != null;
-        return  metaData.getStatus().name();
-    }
-
-    public Map<String,Object> getTaskProgress(String userId){
-        DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
-        assert metaData != null;
-        return  Map.of("recordsProcessed",metaData.getProcessedRecords(),
-                "recordsRequested",metaData.getRequestedRecords());
-    }
-
-    private boolean canCancelTask(TaskStatus status){
-        return (status==TaskStatus.IN_PROGRESS || status==TaskStatus.WAITING || status==TaskStatus.COMPLETED);
-    }
+    @Autowired
+    private TaskProducerService taskProducerService;
 
     private boolean canResumeTask(TaskStatus status){
         return (status==TaskStatus.STOPPED || status==TaskStatus.CANCELLED);
+    }
+    private boolean canCancelTask(TaskStatus status){
+        return (status==TaskStatus.IN_PROGRESS || status==TaskStatus.WAITING || status==TaskStatus.COMPLETED);
+    }
+    private boolean canCreateNewTask(TaskStatus status){
+        return (status!=TaskStatus.IN_PROGRESS && status!=TaskStatus.COLLECTED && status!=TaskStatus.WAITING);
     }
 
     public boolean cancelUserTask(String userId){
@@ -54,15 +45,81 @@ public class TaskService {
         return false;
     }
 
+    public String getTaskStatus(String userId){
+        DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
+        assert metaData != null;
+        return  metaData.getStatus().name();
+    }
+
+    public Map<String,Object> getTaskProgress(String userId){
+        DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
+        assert metaData != null;
+        return  Map.of("recordsProcessed",metaData.getProcessedRecords(),
+                "recordsRequested",metaData.getRequestedRecords());
+    }
+
+    public boolean createAndSendTask(String userId, long records) {
+
+        DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
+        assert metaData != null;
+        TaskStatus status=metaData.getStatus();
+        if(!canCreateNewTask(status))return false;
+
+
+        try {
+            String taskId = UUID.randomUUID().toString();
+            TaskDto taskDto = new TaskDto(taskId, userId, records);
+
+
+            metaData=new DataLoaderMetaData();
+            metaData.setTaskId(taskId);
+            metaData.setStatus(TaskStatus.RECEIVED);
+            metaData.setUserId(userId);
+            metaData.setRequestedRecords(records);
+            metaDataRepository.save(metaData);
+
+
+            // create entry in cache;
+            CacheUtility.setTaskStatus(taskId,TaskStatus.RECEIVED);
+            if(records<=2_000){
+                taskProducerService.sendHighPriorityTask(taskDto);
+                return true;
+            }
+            taskProducerService.sendLowPriorityTask(taskDto);
+            CacheUtility.taskDtoList.add(taskDto);
+
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public boolean resumeTask(String userId) {
         DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
         assert metaData != null;
         TaskStatus status=metaData.getStatus();
-        if(!canResumeTask(status))return false;
+        if(!canResumeTask(status) || metaData.getRequestedRecords()==metaData.getProcessedRecords())return false;
 
         // create task dto using metadata
-        // and requeue
-        // update the states too
+        TaskDto taskDto= new TaskDto();
+        taskDto.setRequestedRecords(metaData.getRequestedRecords()-metaData.getProcessedRecords());
+        taskDto.setUserId(userId);
+        taskDto.setFirst(true);
+        taskDto.setTaskId(metaData.getTaskId());
+        // check if it is priority task
+
+        metaData.setStatus(TaskStatus.RECEIVED);
+        metaData.setResumedAt(LocalDateTime.now());
+        metaData.setCancelled(false);
+        metaDataRepository.save(metaData);
+        CacheUtility.setTaskStatus(metaData.getTaskId(),TaskStatus.RECEIVED);
+        CacheUtility.setRecordsProcessed(metaData.getTaskId(),metaData.getProcessedRecords());
+        if(taskDto.getRequestedRecords()<= 2_000){
+            taskDto.setHighPriorityTask(true);
+            taskProducerService.sendHighPriorityTask(taskDto);
+        }else {
+            taskProducerService.sendLowPriorityTask(taskDto);
+        }
         return true;
 
     }
