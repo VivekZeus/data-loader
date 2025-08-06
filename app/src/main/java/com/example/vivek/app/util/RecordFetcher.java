@@ -1,16 +1,17 @@
 package com.example.vivek.app.util;
 
+import com.example.vivek.app.dto.HttpRecordRespDto;
 import com.example.vivek.app.dto.RecordRespDto;
-import org.hibernate.event.spi.SaveOrUpdateEvent;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.ResourceAccessException;
-import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.Map;
+import java.util.List;
 
 @Component
 public class RecordFetcher {
@@ -19,18 +20,32 @@ public class RecordFetcher {
     @Autowired
     private RestTemplate restTemplate;
 
-    public Map<?, ?> getRecords(long size, long page) {
+    public HttpRecordRespDto getRecords(long size, long page) {
         try {
             String url = String.format("http://localhost:8080/api/records/fetch/%d/%d/my-api-key", page, size);
             ResponseEntity<RecordRespDto> response = restTemplate.getForEntity(url, RecordRespDto.class);
+
             assert response.getBody() != null;
-            return Map.of("data", response.getBody(), "status", response.getStatusCode());
+
+            HttpHeaders httpHeaders = response.getHeaders();
+
+            int remaining = parseHeaderAsInt(httpHeaders, "X-Ratelimit-Remaining", -1);
+            long retryAfter = parseHeaderAsLong(httpHeaders, "X-Ratelimit-Retry-After", -1L);
+            System.out.println(response.getStatusCode());
+            return new HttpRecordRespDto((HttpStatus) response.getStatusCode(), response.getBody(), retryAfter, remaining);
+
+        } catch (HttpClientErrorException.TooManyRequests e) {
+            HttpHeaders headers = e.getResponseHeaders();
+            int remaining = parseHeaderAsInt(headers, "X-Ratelimit-Remaining", -1);
+            long retryAfter = parseHeaderAsLong(headers, "X-Ratelimit-Retry-After", -1L);
+
+            return new HttpRecordRespDto(HttpStatus.TOO_MANY_REQUESTS, null, retryAfter, remaining);
+
         } catch (ResourceAccessException e) {
-            if (testServerResponse()) { // if server is on
-                return getRecords(size, page);
+            if (testServerResponse()) {
+                return getRecords(size, page); // Retry
             } else {
-                // if server is down
-                return Map.of("status", HttpStatus.BAD_GATEWAY);
+                return new HttpRecordRespDto(HttpStatus.BAD_GATEWAY);
             }
         }
     }
@@ -51,6 +66,24 @@ public class RecordFetcher {
 
     }
 
+
+    private int parseHeaderAsInt(HttpHeaders headers, String key, int defaultValue) {
+        try {
+            List<String> values = headers != null ? headers.get(key) : null;
+            return values != null && !values.isEmpty() ? Integer.parseInt(values.get(0)) : defaultValue;
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
+
+    private long parseHeaderAsLong(HttpHeaders headers, String key, long defaultValue) {
+        try {
+            List<String> values = headers != null ? headers.get(key) : null;
+            return values != null && !values.isEmpty() ? Long.parseLong(values.get(0)) : defaultValue;
+        } catch (Exception e) {
+            return defaultValue;
+        }
+    }
 
 
 }

@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -52,14 +53,22 @@ public class RecordController {
         if(size>100){
             return ResponseEntity.status(400).body(Map.of("message","Page size more than 100"));
         }
-//        if(!RateLimitter.shouldAllowRequest(apiKey)){
-//            return ResponseEntity.status(429).body(Map.of("message","Too many requests sent"));
-//        }
+        Map<String,String> rateLimitInfo=RateLimitter.shouldAllowRequest(apiKey);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("X-Ratelimit-Retry-After",rateLimitInfo.get("X-Ratelimit-Retry-After") );
+        headers.set("X-Ratelimit-limit",rateLimitInfo.get("X-Ratelimit-limit"));
+        headers.set("X-Ratelimit-Remaining", rateLimitInfo.get("X-Ratelimit-Remaining"));
+
+        if(!Boolean.parseBoolean(rateLimitInfo.get("status"))){
+            return ResponseEntity.status(429).headers(headers).body(Map.of("message","Too many requests sent"));
+        }
 
         Pageable pageable = PageRequest.of(page, size);
         Page<Record> resultPage = recordRepository.findAll(pageable);
-
-        return ResponseEntity.ok( Map.of("recordList",resultPage.getContent()));
-
+        return ResponseEntity.status(200).headers(headers).body(
+                Map.of("recordList",resultPage.getContent())
+        );
     }
 }
+

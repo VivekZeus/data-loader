@@ -29,15 +29,19 @@ public class TaskController {
     }
 
     @GetMapping("/status/{userId}")
-    public ResponseEntity<?> getTaskStatus(@PathVariable String userId){
+    public ResponseEntity<?> getTaskStatus(@PathVariable String userId) throws Exception {
        String status= taskService.getTaskStatus(userId);
        return ResponseEntity.status(200).body(Map.of("taskStatus",status));
     }
 
     @GetMapping("/progress/{userId}")
-    public ResponseEntity<?> getProgress(@PathVariable String userId){
-        Map<String,Object> data= taskService.getTaskProgress(userId);
-        return ResponseEntity.status(200).body(data);
+    public ResponseEntity<?> getProgress(@PathVariable String userId) {
+        try {
+            Map<String,Object> data= taskService.getTaskProgress(userId);
+            return ResponseEntity.status(200).body(data);
+        } catch (Exception e) {
+         return    ResponseEntity.status(400).build();
+        }
     }
 
     @PostMapping("/cancel")

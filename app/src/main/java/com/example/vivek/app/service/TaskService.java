@@ -1,11 +1,14 @@
 package com.example.vivek.app.service;
 
 import com.example.vivek.app.dto.TaskDto;
+import com.example.vivek.app.entity.CustomUser;
 import com.example.vivek.app.entity.DataLoaderMetaData;
 import com.example.vivek.app.enums.TaskStatus;
 import com.example.vivek.app.repository.MetaDataRepository;
+import com.example.vivek.app.repository.UserRepository;
 import com.example.vivek.app.util.CacheUtility;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -21,8 +24,20 @@ public class TaskService {
     @Autowired
     private TaskProducerService taskProducerService;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    private boolean checkUserExists(String userId){
+        try {
+            userRepository.findByUserId(userId).orElseThrow();
+        } catch (Exception e) {
+            return false;
+        }
+        return true;
+    }
+
     private boolean canResumeTask(TaskStatus status){
-        return (status==TaskStatus.STOPPED || status==TaskStatus.CANCELLED);
+        return (status==TaskStatus.STOPPED || status==TaskStatus.CANCELLED || status==TaskStatus.RECEIVED);
     }
     private boolean canCancelTask(TaskStatus status){
         return (status==TaskStatus.IN_PROGRESS || status==TaskStatus.WAITING || status==TaskStatus.COMPLETED);
@@ -32,6 +47,7 @@ public class TaskService {
     }
 
     public boolean cancelUserTask(String userId){
+        if(!checkUserExists(userId)) return false;
         DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
         assert metaData != null;
         TaskStatus status=metaData.getStatus();
@@ -45,13 +61,15 @@ public class TaskService {
         return false;
     }
 
-    public String getTaskStatus(String userId){
+    public String getTaskStatus(String userId) throws Exception {
+        if(!checkUserExists(userId)) throw new Exception();
         DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
         assert metaData != null;
         return  metaData.getStatus().name();
     }
 
-    public Map<String,Object> getTaskProgress(String userId){
+    public Map<String,Object> getTaskProgress(String userId) throws Exception {
+        if(!checkUserExists(userId)) throw new Exception();
         DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
         assert metaData != null;
         return  Map.of("recordsProcessed",metaData.getProcessedRecords(),
@@ -59,17 +77,16 @@ public class TaskService {
     }
 
     public boolean createAndSendTask(String userId, long records) {
-
+        if(!checkUserExists(userId)) return false;
         DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
-        assert metaData != null;
-        TaskStatus status=metaData.getStatus();
-        if(!canCreateNewTask(status))return false;
-
+        if(metaData!=null) {
+            TaskStatus status = metaData.getStatus();
+            if (!canCreateNewTask(status)) return false;
+        }
 
         try {
             String taskId = UUID.randomUUID().toString();
             TaskDto taskDto = new TaskDto(taskId, userId, records);
-
 
             metaData=new DataLoaderMetaData();
             metaData.setTaskId(taskId);
@@ -95,6 +112,7 @@ public class TaskService {
     }
 
     public boolean resumeTask(String userId) {
+        if(!checkUserExists(userId))return false;
         DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
         assert metaData != null;
         TaskStatus status=metaData.getStatus();
