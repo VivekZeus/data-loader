@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Record Fetcher</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-LN+7fdVzj6u52u30Kp6M/trliBMCMKTyK833zpbD+pXdCLuTusPj697FH4R/5mcr"
+      crossorigin="anonymous"
+    />
+    <script src="js/script.js" defer></script>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="form-row">
+      <input
+        type="text"
+        id="requestedRecordsInput"
+        placeholder="Enter number of records"
+      />
+      <button type="submit" class="btn btn-primary" id="startButton">
+        Start Fetching
+      </button>
+    </div>
+    <div class="buttonContainer">
+      <button type="button" id="refreshButton" class="btn btn-info">
+        Refresh progress
+      </button>
+          <button type="button" id="cancelTaskButton" class="btn btn-danger">
+        Cancel Task
+      </button>
+       </button>
+          <button type="button" id="resumeTaskButton" class="btn btn-success">
+        Resume Task
+      </button>
+    </div>
+
+    
+    <div class="taskInfo">
+        <h2 id="taskStatusText">
+            Task Status:
+        </h2>
+        <h2  id="taskStartTimeText">
+            Start Time:
+        </h2>
+        <h2 id="taskProgressText">
+            Progress : 
+        </h2>
+        <h2 id="taskProcessedRecords">
+            Records Processed Till Now :
+        </h2>
+    </div>
+
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-ndDqU0Gzau9qJ1lfW4pNLlhNTkCfHzAVBReH9diLvGRem5+R9g2FzA8ZGN954O5Q"
+      crossorigin="anonymous"
+    ></script>
+  </body>
+</html>

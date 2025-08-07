@@ -21,7 +21,7 @@ public class TaskProducerService {
         rabbitTemplate.convertAndSend("my-delayed-exchange", "my-routing-key", dto);
     }
 
-    public void requeueLowPriorityTask(TaskDto taskDto , DataLoaderMetaData metaData,Long duration){
+    public void requeueLowPriorityTask(TaskDto taskDto, Long duration){
 
         rabbitTemplate.convertAndSend(
                 "my-delayed-exchange",
@@ -39,7 +39,7 @@ public class TaskProducerService {
         rabbitTemplate.convertAndSend("my-delayed-exchange", "high-routing-key", dto);
     }
 
-    public void requeueHighPriorityTask(TaskDto taskDto , DataLoaderMetaData metaData, Long duration){
+    public void requeueHighPriorityTask(TaskDto taskDto, Long duration){
         rabbitTemplate.convertAndSend(
                 "my-delayed-exchange",
                 "high-routing-key",

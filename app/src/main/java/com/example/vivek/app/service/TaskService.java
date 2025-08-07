@@ -68,12 +68,11 @@ public class TaskService {
         return  metaData.getStatus().name();
     }
 
-    public Map<String,Object> getTaskProgress(String userId) throws Exception {
+    public DataLoaderMetaData getTaskProgress(String userId) throws Exception {
         if(!checkUserExists(userId)) throw new Exception();
         DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
         assert metaData != null;
-        return  Map.of("recordsProcessed",metaData.getProcessedRecords(),
-                "recordsRequested",metaData.getRequestedRecords());
+        return  metaData;
     }
 
     public boolean createAndSendTask(String userId, long records) {
@@ -98,12 +97,13 @@ public class TaskService {
 
             // create entry in cache;
             CacheUtility.setTaskStatus(taskId,TaskStatus.RECEIVED);
-            if(records<=2_000){
+            if(records<=2000){
+                taskDto.setHighPriorityTask(true);
                 taskProducerService.sendHighPriorityTask(taskDto);
                 return true;
             }
             taskProducerService.sendLowPriorityTask(taskDto);
-            CacheUtility.taskDtoList.add(taskDto);
+//            CacheUtility.taskDtoList.add(taskDto);
 
             return true;
         } catch (Exception e) {

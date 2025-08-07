@@ -2,6 +2,7 @@ package com.example.vivek.app.controller;
 
 
 import com.example.vivek.app.dto.TaskRequestDto;
+import com.example.vivek.app.entity.DataLoaderMetaData;
 import com.example.vivek.app.service.TaskService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -37,7 +38,7 @@ public class TaskController {
     @GetMapping("/progress/{userId}")
     public ResponseEntity<?> getProgress(@PathVariable String userId) {
         try {
-            Map<String,Object> data= taskService.getTaskProgress(userId);
+            DataLoaderMetaData data= taskService.getTaskProgress(userId);
             return ResponseEntity.status(200).body(data);
         } catch (Exception e) {
          return    ResponseEntity.status(400).build();
