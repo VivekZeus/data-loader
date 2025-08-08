@@ -31,7 +31,7 @@ public class RecordFetcher {
 
             int remaining = parseHeaderAsInt(httpHeaders, "X-Ratelimit-Remaining", -1);
             long retryAfter = parseHeaderAsLong(httpHeaders, "X-Ratelimit-Retry-After", -1L);
-            System.out.println(response.getStatusCode());
+//            System.out.println(response.getStatusCode());
             return new HttpRecordRespDto((HttpStatus) response.getStatusCode(), response.getBody(), retryAfter, remaining);
 
         } catch (HttpClientErrorException.TooManyRequests e) {

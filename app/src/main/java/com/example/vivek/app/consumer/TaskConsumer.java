@@ -14,8 +14,11 @@ import com.example.vivek.app.repository.TemporaryDataRepository;
 import com.example.vivek.app.service.TaskProducerService;
 import com.example.vivek.app.util.CacheUtility;
 import com.example.vivek.app.util.RecordFetcher;
+import com.rabbitmq.client.Channel;
 import jakarta.transaction.Transactional;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.core.AmqpAdmin;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -23,7 +26,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
-import org.springframework.scheduling.config.Task;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -32,7 +34,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
-
+@Slf4j
 @Service
 public class TaskConsumer {
 
@@ -71,12 +73,12 @@ public class TaskConsumer {
         return 0;
     }
 
-    private int getRequestCount(TaskDto taskDto){
-        int requests=80;
+    private int getRequestCount(TaskDto taskDto,int remaining){
+        int requests;
         if(!taskDto.isHighPriorityTask()){
             int messagesInQueue=getLowPriorityQueueMessageCount()+1;
             if(messagesInQueue>1){
-                System.out.println("Multiple tasks are there with count "+messagesInQueue);
+               log.info("Multiple tasks are there with count {}",messagesInQueue);
                 // now check if really i will divide
                 // if it is first task then division=false
                 if(!CacheUtility.getTaskDivision())
@@ -86,14 +88,14 @@ public class TaskConsumer {
                 else{ // task division was set to true so don't break now
                     CacheUtility.setTaskDivision(false);
                 }
-                requests = Math.min(40, 100);
+                requests = Math.min(40, remaining);
             }
             else {
-                requests = Math.min(80, 100);
+                requests = Math.min(80, remaining);
             }
         }
         else {
-            requests = Math.min(20, 100);
+            requests = Math.min(20, remaining);
         }
         return requests;
     }
@@ -101,30 +103,59 @@ public class TaskConsumer {
     @RabbitListener(queues = "my-queue")
     @Transactional(rollbackOn = Exception.class)
     public void handleLowPriorityTask(TaskDto taskDto) throws Exception {
-        System.out.println("Received Task on low priority queue: " + taskDto);
+        log.info("Task Received on Low Priority Queue {}",taskDto);
         processTask(taskDto);
     }
 
-    @RabbitListener(queues = "my-high-priority-queue")
+    @RabbitListener(queues = "my-queue", containerFactory = "rabbitListenerContainerFactory")
     @Transactional(rollbackOn = Exception.class)
-    public void handleHighPriorityTask(TaskDto taskDto) throws Exception {
-        System.out.println("Received Task on high priority queue: " + taskDto);
-        processTask(taskDto);
+    public void handleLowPriorityTask(TaskDto taskDto, Channel channel, Message message) throws Exception {
+        try {
+            log.info("Received Task on low priority queue: {}", taskDto);
+            processTask(taskDto);
+            channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
+        } catch (Exception ex) {
+            log.error("Task failed: {}", ex.getMessage());
+            channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, true);
+            throw ex;
+        }
+    }
+
+    @RabbitListener(queues = "my-high-priority-queue", containerFactory = "rabbitListenerContainerFactory")
+    @Transactional(rollbackOn = Exception.class)
+    public void handleHighPriorityTask(TaskDto taskDto, Channel channel, Message message) throws Exception {
+        try {
+            log.info("Received Task on high priority queue: {}", taskDto);
+
+            processTask(taskDto); // your DB work
+
+            // ✅ ACK after successful processing + commit
+            channel.basicAck(message.getMessageProperties().getDeliveryTag(), false);
+        } catch (Exception ex) {
+            log.error("Failed to process high priority task: {}", ex.getMessage());
+
+
+            channel.basicNack(message.getMessageProperties().getDeliveryTag(), false, true);
+
+
+            throw ex;
+        }
     }
 
     private void processTask(TaskDto taskDto) throws InterruptedException {
 
-//        RequestQuotaStatusDto quotaStatus=CacheUtility.getQuotaStatus(taskDto.isHighPriorityTask());
-//        System.out.println(quotaStatus);
-//        if(!quotaStatus.isCanExecuteNow()){
-//            long waitingTime=quotaStatus.getWaitTimeMillis();
-//            requeueTask(taskDto,waitingTime);
-//            return;
-//        }
-//        System.out.println(quotaStatus.getAllowedRequestCount());
+        RequestQuotaStatusDto quotaStatus=CacheUtility.getQuotaStatus(taskDto.isHighPriorityTask());
+        log.info("The quota status is {}",quotaStatus);
+        if(!quotaStatus.isCanExecuteNow()){
+            long waitingTime=quotaStatus.getWaitTimeMillis();
+          log.info("Task requeued due to lower request count");
+            requeueTask(taskDto,waitingTime);
+            return;
+        }
 
-        int requests=getRequestCount(taskDto);
-        System.out.println(requests +" requests will be served");
+
+        int requests=getRequestCount(taskDto,quotaStatus.getAllowedRequestCount());
+        log.info("{} requests will be served",requests );
 
 
 
@@ -145,26 +176,28 @@ public class TaskConsumer {
 
             HttpRecordRespDto apiResp = recordFetcher.getRecords(size, pageNumber);
             if (!handleApiResponse(apiResp, taskDto, metaData, pageNumber)) return;
-
+            CacheUtility.incrementRequestCount(taskDto.isHighPriorityTask(),1);
             List<RecordDataDto> data = apiResp.getRespDto().getRecordList();
             if (data.isEmpty() && taskDto.getRequestedRecords() > 0) {
                 requeueTask(taskDto, Duration.ofMinutes(2).toMillis());
                 return;
             }
 
+
             persistTempData(taskDto, metaData, data, pageNumber, size);
             updateMetaDataAfterProcessing(metaData, taskDto, data.size(), pageNumber);
-
             if (taskDto.getRequestedRecords() <= 0) break;
 
             pageNumber++;
             size = Math.min(maxRecords, taskDto.getRequestedRecords());
-            CacheUtility.incrementRequestCount(taskDto.isHighPriorityTask(),1);
+
+
         }
+
+
 
         finalizeTask(taskDto, metaData, pageNumber);
     }
-
 
     private DataLoaderMetaData fetchMetaData(TaskDto taskDto) {
         DataLoaderMetaData metaData = metaDataRepository.findByTaskId(taskDto.getTaskId()).orElse(null);
@@ -195,14 +228,13 @@ public class TaskConsumer {
             pageNumber=-1;
         }else taskDto.setFirst(false);
         if (status == HttpStatus.TOO_MANY_REQUESTS) {
-            System.out.println("Task requeued due to too many requests");
-            System.out.println("Duration of wait is "+Duration.ofMillis(apiResp.getRetryAfter()).toMinutes());
+            log.info("Task requeued due to too many requests");
             requeueTask(taskDto,Duration.ofMinutes(3).toMillis());
         } else if (status == HttpStatus.BAD_GATEWAY) {
-            System.out.println("SERVER IS DOWN SO REQUEUED FOR SOME TIME");
+           log.info("SERVER IS DOWN SO REQUEUED FOR SOME TIME");
             CacheUtility.setTaskStatus(taskDto.getTaskId(), TaskStatus.WAITING);
             metaData.setStatus(TaskStatus.WAITING);
-            System.out.println("Task requeued due to server down");
+           log.error("Task requeued due to server down");
             requeueTask(taskDto,Duration.ofMinutes(3).toMillis());
         }
 
@@ -254,7 +286,7 @@ public class TaskConsumer {
 
             metaData.setStatus(TaskStatus.COLLECTED);
             CacheUtility.setTaskStatus(taskDto.getTaskId(), TaskStatus.COLLECTED);
-            moveToMainTable(metaData.getUserId());
+            moveToMainTable(metaData.getUserId(),taskDto.getTaskId());
 
             metaData.setStatus(TaskStatus.COMPLETED);
             CacheUtility.setTaskStatus(taskDto.getTaskId(), TaskStatus.COMPLETED);
@@ -265,9 +297,8 @@ public class TaskConsumer {
         metaDataRepository.save(metaData);
     }
 
-
     @Transactional
-    private void moveToMainTable(String userId) {
+    private void moveToMainTable(String userId,String taskId) {
         while (true) {
             Pageable pageable = PageRequest.of(0, (int) maxRecordsToShiftToMain); // always start from 0
             List<DataTemp> dataTempList = temporaryDataRepository.findByUserId(userId, pageable).getContent();
@@ -282,7 +313,9 @@ public class TaskConsumer {
                         temp.getName(),
                         temp.getRollNo(),
                         temp.getAge(),
-                        userId
+                        userId,
+                        taskId
+
                 ));
             }
 
@@ -290,7 +323,5 @@ public class TaskConsumer {
             temporaryDataRepository.deleteAll(dataTempList);
         }
     }
-
-
 
 }

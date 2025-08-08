@@ -1,16 +1,23 @@
 package com.example.vivek.app.service;
 
+import com.example.vivek.app.dto.DataRespDto;
 import com.example.vivek.app.dto.TaskDto;
 import com.example.vivek.app.entity.CustomUser;
 import com.example.vivek.app.entity.DataLoaderMetaData;
+import com.example.vivek.app.entity.DataMain;
 import com.example.vivek.app.enums.TaskStatus;
+import com.example.vivek.app.repository.MainDataRepository;
 import com.example.vivek.app.repository.MetaDataRepository;
 import com.example.vivek.app.repository.UserRepository;
 import com.example.vivek.app.util.CacheUtility;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import java.net.Authenticator;
 import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -26,6 +33,9 @@ public class TaskService {
 
     @Autowired
     private UserRepository userRepository;
+
+    @Autowired
+    private MainDataRepository mainDataRepository;
 
     private boolean checkUserExists(String userId){
         try {
@@ -139,6 +149,24 @@ public class TaskService {
             taskProducerService.sendLowPriorityTask(taskDto);
         }
         return true;
+
+    }
+
+    public DataRespDto fetchDataForUser(String userId) throws Exception {
+        DataRespDto respDto=new DataRespDto();
+        if(!checkUserExists(userId)) throw new Exception();
+        DataLoaderMetaData metaData = metaDataRepository.findTopByUserIdOrderByStartedAtDesc(userId).orElse(null);
+        if(metaData==null || !(metaData.getStatus() ==TaskStatus.COMPLETED)) {
+            respDto.setStatus(false);
+            return  respDto;
+        }
+        Pageable pageable=PageRequest.of(0,10);
+        Page<DataMain> dataMainPage=  mainDataRepository.
+                findByTaskIdAndUserId(metaData.getTaskId(),userId,pageable);
+
+        respDto.setData(dataMainPage.getContent());
+        respDto.setStatus(true);
+        return respDto;
 
     }
 }

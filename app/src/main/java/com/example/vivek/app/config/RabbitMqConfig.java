@@ -2,10 +2,7 @@ package com.example.vivek.app.config;
 
 
 import com.example.vivek.app.util.CacheUtility;
-import org.springframework.amqp.core.Binding;
-import org.springframework.amqp.core.BindingBuilder;
-import org.springframework.amqp.core.CustomExchange;
-import org.springframework.amqp.core.Queue;
+import org.springframework.amqp.core.*;
 import org.springframework.amqp.rabbit.config.RetryInterceptorBuilder;
 import org.springframework.amqp.rabbit.config.SimpleRabbitListenerContainerFactory;
 import org.springframework.amqp.rabbit.connection.ConnectionFactory;
@@ -37,6 +34,7 @@ public class RabbitMqConfig {
             factory.setMessageConverter(messageConverter);
             factory.setPrefetchCount(1);
             factory.setConcurrentConsumers(1);
+            factory.setAcknowledgeMode(AcknowledgeMode.MANUAL);
 //            factory.setConcurrentConsumers(4);     // Minimum
 //            factory.setMaxConcurrentConsumers(5);  // Maximum
             factory.setAdviceChain(RetryInterceptorBuilder.stateless()

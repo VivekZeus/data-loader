@@ -1,192 +1,194 @@
-if (localStorage.getItem("userId") == null) {
+const userId = localStorage.getItem("userId");
+if (!userId) {
   window.location.href = "login.html";
 }
 
+// Element references
 const startButton = document.getElementById("startButton") as HTMLButtonElement;
-
 const refreshButton = document.getElementById(
   "refreshButton"
 ) as HTMLButtonElement;
-
 const cancelTaskButton = document.getElementById(
   "cancelTaskButton"
 ) as HTMLButtonElement;
-
 const resumeTaskButton = document.getElementById(
   "resumeTaskButton"
 ) as HTMLButtonElement;
+const requestedRecordsInput = document.getElementById(
+  "requestedRecordsInput"
+) as HTMLInputElement;
 
-function putDataToText(data: any) {
-  document.getElementById(
-    "taskStatusText"
-  )!.innerText = `Task Status: ${data.status}`;
-  const startTime = new Date(data.startedAt);
-  const formattedTime = startTime.toLocaleString();
-
-  document.getElementById(
-    "taskStartTimeText"
-  )!.innerText = `Start Time: ${formattedTime}`;
-  document.getElementById("taskProgressText")!.innerText = `Progress: ${
-    (data.processedRecords / data.requestedRecords) * 100
-  } %`;
-  document.getElementById(
-    "taskProcessedRecords"
-  )!.innerText = `Records Processed Till Now: ${data.processedRecords}`;
-}
-
-function initialize() {
-  let userId: string | null = localStorage.getItem("userId");
-
-  const requestOptions = {
-    method: "GET",
-  };
-
-  fetch(`http://localhost:8081/task/progress/${userId}`, requestOptions)
-    .then((response) => response.json())
-    .then((data) => {
-      if (!(data.status === "CANCELLED" || data.status === "COMPLETED")) {
-        startButton.disabled = true;
-      }
-      if (!(data.status === "CANCELLED" || data.status === "STOPPED")) {
-        resumeTaskButton.disabled = true;
-      }
-      if (data.status == "CANCELLED" || data.status=="COMPLETED" || data.status=="COLLECTED") {
-        cancelTaskButton.disabled = true;
-      }
-
-
-      putDataToText(data);
-    })
-    .catch((error) => {
-      alert("some error occured");
-    });
-}
+const viewDataButton = document.getElementById("viewData") as HTMLButtonElement;
+const dataTableBody = document.querySelector(
+  "#dataTable tbody"
+) as HTMLTableSectionElement;
+const dataTable = document.getElementById("dataTable") as HTMLTableElement;
 
 if (
-  resumeTaskButton == null ||
-  startButton == null ||
-  cancelTaskButton == null ||
-  refreshButton == null
+  !startButton ||
+  !refreshButton ||
+  !cancelTaskButton ||
+  !resumeTaskButton ||
+  !requestedRecordsInput
 ) {
-  throw new Error("");
+  throw new Error("One or more required elements not found in the DOM.");
 }
 
-initialize();
-
-async function createTask(requestOptions: {}): Promise<boolean> {
-  try {
-    const response = await fetch(
-      "http://localhost:8081/task/create",
-      requestOptions
-    );
-    return response.status === 201;
-  } catch (error) {
-    console.error("Error creating task:", error);
-    return false;
-  }
+function getTaskStatus(): Promise<string> {
+  return fetch(`http://localhost:8081/task/progress/${userId}`)
+    .then((res) => res.json())
+    .then((data) => {
+      if (data.status === "COMPLETED") {
+        viewDataButton.style.display = "inline-block"; // Show button
+      }
+      return data.status;
+    });
 }
 
+// Simulate API call to get completed task's data
+function fetchCompletedTaskData(): Promise<any[]> {
+  return fetch(`http://localhost:8081/task/view-data/${userId}`).then((res) =>
+    res.json()
+  );
+}
+
+// Populate task data into UI
+function updateTaskUI(data: any): void {
+  const { status, startedAt, processedRecords, requestedRecords } = data;
+
+  document.getElementById(
+    "taskStatusText"
+  )!.innerText = `Task Status: ${status}`;
+  document.getElementById(
+    "taskStartTimeText"
+  )!.innerText = `Start Time: ${new Date(startedAt).toLocaleString()}`;
+  document.getElementById(
+    "taskProcessedRecords"
+  )!.innerText = `Records Processed Till Now: ${processedRecords}`;
+
+  document.getElementById(
+    "requestedRecords"
+  )!.innerText = `Requested Records : ${requestedRecords}`;
+
+  const progress = Math.floor((processedRecords / requestedRecords) * 100);
+
+  const progressBar = document.getElementById("taskProgressBar") as HTMLElement;
+  progressBar.style.width = `${progress}%`;
+  progressBar.innerText = `${progress}%`;
+
+  document.getElementById(
+    "taskProgressText"
+  )!.innerText = `Progress : ${progress}%`;
+  startButton.disabled = ["CANCELLED", "COMPLETED"].indexOf(status) === -1;
+  requestedRecordsInput.disabled =
+    ["CANCELLED", "COMPLETED"].indexOf(status) === -1;
+  resumeTaskButton.disabled = ["CANCELLED", "STOPPED"].indexOf(status) === -1;
+  cancelTaskButton.disabled =
+    ["CANCELLED", "COMPLETED", "COLLECTED"].indexOf(status) !== -1;
+}
+
+function loadTaskStatus(): void {
+  fetch(`http://localhost:8081/task/progress/${userId}`)
+    .then((res) => res.json())
+    .then(updateTaskUI)
+    .catch(() => {
+      resumeTaskButton.disabled = true;
+      cancelTaskButton.disabled = true;
+      // alert("You don't have any ongoing task.");
+    });
+}
+
+// Generic POST call
+async function postRequest(url: string, body: object): Promise<Response> {
+  return fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+// Task creation handler
 startButton.addEventListener("click", async () => {
-  const requestedRecordsInput = document.getElementById(
-    "requestedRecordsInput"
-  ) as HTMLInputElement | null;
-  if (requestedRecordsInput === null) {
-    alert("Enter Requested Records...");
+  const records = parseInt(requestedRecordsInput.value.trim(), 10);
+
+  if (isNaN(records) || records <= 0) {
+    alert("Please enter a valid number of records.");
     return;
   }
-  const reqRecords = parseInt(requestedRecordsInput.value.trim(), 10);
 
-  let userId: string | null = localStorage.getItem("userId");
-
-  const myHeaders = new Headers();
-  myHeaders.append("Content-Type", "application/json");
-
-  const raw = JSON.stringify({
-    userId: userId,
-    recordsRequested: reqRecords,
+  const response = await postRequest("http://localhost:8081/task/create", {
+    userId,
+    recordsRequested: records,
   });
 
-  const requestOptions = {
-    method: "POST",
-    headers: myHeaders,
-    body: raw,
-  };
-
-  const success = await createTask(requestOptions);
-  if (success) {
-    alert("Task Recieved Successfully!");
-    window.location.reload();
+  if (response.status === 201) {
+    alert("Task received successfully!");
   } else {
-    alert("You Currently have a ongoing task !");
+    alert("You currently have an ongoing task!");
+  }
+
+  window.location.reload();
+});
+
+// Refresh button handler
+refreshButton.addEventListener("click", () => {
+  loadTaskStatus();
+  getTaskStatus();
+});
+
+// Cancel task handler
+cancelTaskButton.addEventListener("click", async () => {
+  try {
+    await postRequest("http://localhost:8081/task/cancel", { userId });
     window.location.reload();
+  } catch (err) {
+    console.error("Error cancelling task:", err);
   }
 });
 
-refreshButton.addEventListener("click", async () => {
-  let userId: string | null = localStorage.getItem("userId");
-
-  const requestOptions = {
-    method: "GET",
-  };
-
-  fetch(`http://localhost:8081/task/progress/${userId}`, requestOptions)
-    .then((response) => response.json())
-    .then((result) => {
-      putDataToText(result);
-    })
-    .catch((error) => {
-      alert("some error occured");
-    });
-});
-
-cancelTaskButton.addEventListener("click", async () => {
-  let userId: string | null = localStorage.getItem("userId");
-
-  const myHeaders = new Headers();
-  myHeaders.append("Content-Type", "application/json");
-
-  const raw = JSON.stringify({
-    userId: userId,
-  });
-
-  const requestOptions = {
-    method: "POST",
-    headers: myHeaders,
-    body: raw,
-  };
-
-  fetch("http://localhost:8081/task/cancel", requestOptions)
-    .then((response) => response.json())
-    .then((data) => {})
-    .catch((error) => console.error(error));
-
-    window.location.reload();
-});
-
+// Resume task handler
 resumeTaskButton.addEventListener("click", async () => {
-  let userId: string | null = localStorage.getItem("userId");
+  try {
+    const response = await postRequest("http://localhost:8081/task/resume", {
+      userId,
+    });
 
-  const myHeaders = new Headers();
-  myHeaders.append("Content-Type", "application/json");
-
-  const raw = JSON.stringify({
-    userId: userId,
-  });
-
-  const requestOptions = {
-    method: "POST",
-    headers: myHeaders,
-    body: raw,
-  };
-
-  fetch("http://localhost:8081/task/resume", requestOptions)
-    .then((response) => {
-      if (response.status == 200) {
-        alert("Resumed Task successfully");
-        window.location.reload();
-      } else {
-        alert("Error Ocurred Resuming Task...");
-      }
-    })
-    .catch((error) => console.error(error));
+    if (response.ok) {
+      alert("Resumed task successfully!");
+      window.location.reload();
+    } else {
+      alert("Error occurred while resuming the task.");
+    }
+  } catch (err) {
+    console.error("Error resuming task:", err);
+  }
 });
+
+viewDataButton.addEventListener("click", async () => {
+  try {
+    const data = await fetchCompletedTaskData();
+    // To show the table
+    dataTable.style.display = "block";
+    dataTableBody.innerHTML = ""; // Clear existing rows
+
+    data.forEach((item) => {
+      const row = document.createElement("tr");
+
+      row.innerHTML = `
+        <td>${item.age}</td>
+        <td>${item.rollNo}</td>
+        <td>${item.name}</td>
+      `;
+
+      dataTableBody.appendChild(row);
+      viewDataButton.disabled = true;
+    });
+  } catch (error) {
+    console.error("Error fetching data:", error);
+    alert("Failed to load data.");
+  }
+});
+
+// Initialize everything on page load
+loadTaskStatus();
+getTaskStatus();

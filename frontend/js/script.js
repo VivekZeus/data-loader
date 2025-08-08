@@ -8,145 +8,151 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-if (localStorage.getItem("userId") == null) {
+const userId = localStorage.getItem("userId");
+if (!userId) {
     window.location.href = "login.html";
 }
+// Element references
 const startButton = document.getElementById("startButton");
 const refreshButton = document.getElementById("refreshButton");
 const cancelTaskButton = document.getElementById("cancelTaskButton");
 const resumeTaskButton = document.getElementById("resumeTaskButton");
-function putDataToText(data) {
-    document.getElementById("taskStatusText").innerText = `Task Status: ${data.status}`;
-    const startTime = new Date(data.startedAt);
-    const formattedTime = startTime.toLocaleString();
-    document.getElementById("taskStartTimeText").innerText = `Start Time: ${formattedTime}`;
-    document.getElementById("taskProgressText").innerText = `Progress: ${(data.processedRecords / data.requestedRecords) * 100} %`;
-    document.getElementById("taskProcessedRecords").innerText = `Records Processed Till Now: ${data.processedRecords}`;
+const requestedRecordsInput = document.getElementById("requestedRecordsInput");
+const viewDataButton = document.getElementById("viewData");
+const dataTableBody = document.querySelector("#dataTable tbody");
+const dataTable = document.getElementById("dataTable");
+if (!startButton ||
+    !refreshButton ||
+    !cancelTaskButton ||
+    !resumeTaskButton ||
+    !requestedRecordsInput) {
+    throw new Error("One or more required elements not found in the DOM.");
 }
-function initialize() {
-    let userId = localStorage.getItem("userId");
-    const requestOptions = {
-        method: "GET",
-    };
-    fetch(`http://localhost:8081/task/progress/${userId}`, requestOptions)
-        .then((response) => response.json())
+function getTaskStatus() {
+    return fetch(`http://localhost:8081/task/progress/${userId}`)
+        .then((res) => res.json())
         .then((data) => {
-        if (!(data.status === "CANCELLED" || data.status === "COMPLETED")) {
-            startButton.disabled = true;
+        if (data.status === "COMPLETED") {
+            viewDataButton.style.display = "inline-block"; // Show button
         }
-        if (!(data.status === "CANCELLED" || data.status === "STOPPED")) {
-            resumeTaskButton.disabled = true;
-        }
-        if (data.status == "CANCELLED" || data.status == "COMPLETED" || data.status == "COLLECTED") {
-            cancelTaskButton.disabled = true;
-        }
-        putDataToText(data);
-    })
-        .catch((error) => {
-        alert("some error occured");
+        return data.status;
     });
 }
-if (resumeTaskButton == null ||
-    startButton == null ||
-    cancelTaskButton == null ||
-    refreshButton == null) {
-    throw new Error("");
+// Simulate API call to get completed task's data
+function fetchCompletedTaskData() {
+    return fetch(`http://localhost:8081/task/view-data/${userId}`)
+        .then((res) => res.json());
 }
-initialize();
-function createTask(requestOptions) {
+// Populate task data into UI
+function updateTaskUI(data) {
+    const { status, startedAt, processedRecords, requestedRecords } = data;
+    document.getElementById("taskStatusText").innerText = `Task Status: ${status}`;
+    document.getElementById("taskStartTimeText").innerText = `Start Time: ${new Date(startedAt).toLocaleString()}`;
+    document.getElementById("taskProcessedRecords").innerText = `Records Processed Till Now: ${processedRecords}`;
+    document.getElementById("requestedRecords").innerText = `Requested Records : ${requestedRecords}`;
+    const progress = Math.floor((processedRecords / requestedRecords) * 100);
+    const progressBar = document.getElementById("taskProgressBar");
+    progressBar.style.width = `${progress}%`;
+    progressBar.innerText = `${progress}%`;
+    document.getElementById("taskProgressText").innerText = `Progress : ${progress}%`;
+    startButton.disabled = ["CANCELLED", "COMPLETED"].indexOf(status) === -1;
+    requestedRecordsInput.disabled =
+        ["CANCELLED", "COMPLETED"].indexOf(status) === -1;
+    resumeTaskButton.disabled = ["CANCELLED", "STOPPED"].indexOf(status) === -1;
+    cancelTaskButton.disabled =
+        ["CANCELLED", "COMPLETED", "COLLECTED"].indexOf(status) !== -1;
+}
+function loadTaskStatus() {
+    fetch(`http://localhost:8081/task/progress/${userId}`)
+        .then((res) => res.json())
+        .then(updateTaskUI)
+        .catch(() => {
+        resumeTaskButton.disabled = true;
+        cancelTaskButton.disabled = true;
+        // alert("You don't have any ongoing task.");
+    });
+}
+// Generic POST call
+function postRequest(url, body) {
     return __awaiter(this, void 0, void 0, function* () {
-        try {
-            const response = yield fetch("http://localhost:8081/task/create", requestOptions);
-            return response.status === 201;
-        }
-        catch (error) {
-            console.error("Error creating task:", error);
-            return false;
-        }
+        return fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+        });
     });
 }
+// Task creation handler
 startButton.addEventListener("click", () => __awaiter(void 0, void 0, void 0, function* () {
-    const requestedRecordsInput = document.getElementById("requestedRecordsInput");
-    if (requestedRecordsInput === null) {
-        alert("Enter Requested Records...");
+    const records = parseInt(requestedRecordsInput.value.trim(), 10);
+    if (isNaN(records) || records <= 0) {
+        alert("Please enter a valid number of records.");
         return;
     }
-    const reqRecords = parseInt(requestedRecordsInput.value.trim(), 10);
-    let userId = localStorage.getItem("userId");
-    const myHeaders = new Headers();
-    myHeaders.append("Content-Type", "application/json");
-    const raw = JSON.stringify({
-        userId: userId,
-        recordsRequested: reqRecords,
+    const response = yield postRequest("http://localhost:8081/task/create", {
+        userId,
+        recordsRequested: records,
     });
-    const requestOptions = {
-        method: "POST",
-        headers: myHeaders,
-        body: raw,
-    };
-    const success = yield createTask(requestOptions);
-    if (success) {
-        alert("Task Recieved Successfully!");
-        window.location.reload();
+    if (response.status === 201) {
+        alert("Task received successfully!");
     }
     else {
-        alert("You Currently have a ongoing task !");
-        window.location.reload();
+        alert("You currently have an ongoing task!");
     }
-}));
-refreshButton.addEventListener("click", () => __awaiter(void 0, void 0, void 0, function* () {
-    let userId = localStorage.getItem("userId");
-    const requestOptions = {
-        method: "GET",
-    };
-    fetch(`http://localhost:8081/task/progress/${userId}`, requestOptions)
-        .then((response) => response.json())
-        .then((result) => {
-        putDataToText(result);
-    })
-        .catch((error) => {
-        alert("some error occured");
-    });
-}));
-cancelTaskButton.addEventListener("click", () => __awaiter(void 0, void 0, void 0, function* () {
-    let userId = localStorage.getItem("userId");
-    const myHeaders = new Headers();
-    myHeaders.append("Content-Type", "application/json");
-    const raw = JSON.stringify({
-        userId: userId,
-    });
-    const requestOptions = {
-        method: "POST",
-        headers: myHeaders,
-        body: raw,
-    };
-    fetch("http://localhost:8081/task/cancel", requestOptions)
-        .then((response) => response.json())
-        .then((data) => { })
-        .catch((error) => console.error(error));
     window.location.reload();
 }));
+// Refresh button handler
+refreshButton.addEventListener("click", loadTaskStatus);
+// Cancel task handler
+cancelTaskButton.addEventListener("click", () => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        yield postRequest("http://localhost:8081/task/cancel", { userId });
+        window.location.reload();
+    }
+    catch (err) {
+        console.error("Error cancelling task:", err);
+    }
+}));
+// Resume task handler
 resumeTaskButton.addEventListener("click", () => __awaiter(void 0, void 0, void 0, function* () {
-    let userId = localStorage.getItem("userId");
-    const myHeaders = new Headers();
-    myHeaders.append("Content-Type", "application/json");
-    const raw = JSON.stringify({
-        userId: userId,
-    });
-    const requestOptions = {
-        method: "POST",
-        headers: myHeaders,
-        body: raw,
-    };
-    fetch("http://localhost:8081/task/resume", requestOptions)
-        .then((response) => {
-        if (response.status == 200) {
-            alert("Resumed Task successfully");
+    try {
+        const response = yield postRequest("http://localhost:8081/task/resume", {
+            userId,
+        });
+        if (response.ok) {
+            alert("Resumed task successfully!");
             window.location.reload();
         }
         else {
-            alert("Error Ocurred Resuming Task...");
+            alert("Error occurred while resuming the task.");
         }
-    })
-        .catch((error) => console.error(error));
+    }
+    catch (err) {
+        console.error("Error resuming task:", err);
+    }
 }));
+viewDataButton.addEventListener("click", () => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const data = yield fetchCompletedTaskData();
+        // To show the table
+        dataTable.style.display = "block";
+        dataTableBody.innerHTML = ""; // Clear existing rows
+        data.forEach((item) => {
+            const row = document.createElement("tr");
+            row.innerHTML = `
+        <td>${item.age}</td>
+        <td>${item.rollNo}</td>
+        <td>${item.name}</td>
+      `;
+            dataTableBody.appendChild(row);
+            viewDataButton.disabled = true;
+        });
+    }
+    catch (error) {
+        console.error("Error fetching data:", error);
+        alert("Failed to load data.");
+    }
+}));
+// Initialize everything on page load
+loadTaskStatus();
+getTaskStatus();

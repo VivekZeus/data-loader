@@ -1,6 +1,7 @@
 package com.example.vivek.app.controller;
 
 
+import com.example.vivek.app.dto.DataRespDto;
 import com.example.vivek.app.dto.TaskRequestDto;
 import com.example.vivek.app.entity.DataLoaderMetaData;
 import com.example.vivek.app.service.TaskService;
@@ -63,4 +64,12 @@ public class TaskController {
 
     }
 
+    @GetMapping("/view-data/{userId}")
+    public ResponseEntity<?> provideDataToUser(@PathVariable String userId) throws Exception {
+        DataRespDto respDto=taskService.fetchDataForUser(userId);
+        if(respDto.isStatus()){
+            return ResponseEntity.status(200).body(respDto.getData());
+        }
+        return ResponseEntity.status(400).build(); // indicates that there is no data for the particular user
+    }
 }
